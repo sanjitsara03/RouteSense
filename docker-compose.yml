@@ -1,44 +1,60 @@
-version: '3'
+version: '3.8'
+
+x-spark-work: &spark-work
+  image: bitnami/spark:latest
+  volumes:
+    - ./jobs:/opt/bitnami/spark/jobs
+  command: bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+  depends_on:
+    - spark-master
+  environment:
+    SPARK_MODE: worker
+    SPARK_WORKER_CORES: 2
+    SPARK_WORKER_MEMORY: 1g
+    SPARK_MASTER_URL: spark://spark-master:7077
+  networks:
+    - app-tier
 
 services:
-  zookeeper:
-    image: 'bitnami/zookeeper:latest'
-    hostname: zookeeper
-    container_name: zookeeper
-    ports:
-      - "2181:2181"
-    environment:
-      ZOO_PORT_NUMBER: 2181
-      ZOO_TICK_TIME: 2000
-    healthcheck:
-      test: [ 'CMD', 'bash', '-c', "echo 'ruok' | nc localhost 2181" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - app-tier
   kafka:
-    image: 'bitnami/kafka:latest'
-    hostname: kafka
+    image: bitnami/kafka:latest
     container_name: kafka
-    depends_on:
-      zookeeper:
-        condition: service_healthy
+    environment:
+      KAFKA_ENABLE_KRAFT:               "yes"
+      KAFKA_CFG_PROCESS_ROLES:          "controller,broker"
+      KAFKA_CFG_NODE_ID:                "1"
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS:  "1@kafka:9093"
+
+      ALLOW_PLAINTEXT_LISTENER:         "yes"
+      KAFKA_CFG_LISTENERS:              "PLAINTEXT://:9092,CONTROLLER://:9093"
+      KAFKA_CFG_ADVERTISED_LISTENERS:   "PLAINTEXT://localhost:9092"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
     ports:
       - "9092:9092"
-      - "9101:9101"
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      ALLOW_PLAINTEXT_LISTENER: 'yes'
-    healthcheck:
-      test: [ 'CMD', 'bash', '-c', "nc -z localhost 9092" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - "9093:9093"
+    volumes:
+      - kafka_data:/bitnami/kafka
     networks:
       - app-tier
+
+  spark-master:
+    image: bitnami/spark:latest
+    volumes:
+      - ./jobs:/opt/bitnami/spark/jobs
+    command: bin/spark-class org.apache.spark.deploy.master.Master
+    ports:
+      - "9090:8080"
+      - "7077:7077"
+    networks:
+      - app-tier
+  spark-worker-1:
+    <<: *spark-work
+
+  spark-worker-2:
+    <<: *spark-work
+
 networks:
   app-tier:
+volumes:
+  kafka_data:
