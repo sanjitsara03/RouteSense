@@ -1,7 +1,10 @@
 import os
 import random
+import time
 import uuid
 
+from confluent_kafka import Producer
+import simplejson as json
 from datetime import datetime, timedelta
 
 STATECOLLEGE_COORDINATES = {"latitude": 40.7934, "longitude": 77.8600}
@@ -34,8 +37,8 @@ def generate_gps_data(device_id, timestamp, vehicle_type='private'):
         'id': uuid.uuid4(),
         'deviceId': device_id,
         'timestamp': timestamp,
-        'speed': random.uniform(0, 40),  # km/h
-        'direction': 'North-East',
+        'speed': random.uniform(30, 70),
+        'direction': 'East',
         'vehicleType': vehicle_type
     }
 
@@ -57,12 +60,12 @@ def generate_weather_data(device_id, timestamp, location):
         'deviceId': device_id,
         'location': location,
         'timestamp': timestamp,
-        'temperature': random.uniform(-5, 26),
+        'temperature': random.uniform(20, 60),
         'weatherCondition': random.choice(['Sunny', 'Cloudy', 'Rain', 'Snow']),
-        'precipitation': random.uniform(0, 25),
+        'precipitation': random.uniform(0, 10),
         'windSpeed': random.uniform(0, 100),
         'humidity': random.randint(0, 100),  # percentage
-        'airQualityIndex': random.uniform(0, 500)  # AQL Value goes here
+        'airQualityIndex': random.uniform(0, 500)  # AQL Value here
     }
 
 
@@ -100,11 +103,65 @@ def generate_vehicle_data(device_id):
         'timestamp': get_next_time().isoformat(),
         'location': (location['latitude'], location['longitude']),
         'speed': random.uniform(10, 40),
-        'direction': 'North-East',
-        'make': 'BMW',
-        'model': 'C500',
-        'year': 2024,
+        'direction': 'East',
+        'make': 'Toyota',
+        'model': 'Camry',
+        'year': 2020,
         'fuelType': 'Hybrid'
     }
+def json_serializer(obj):
+    if isinstance(obj, uuid.UUID):
+        return str(obj)
+    raise TypeError(f'Object of type {obj.__class__.__name__} is not JSON serializable')
 
 
+def delivery_report(err, msg):
+    if err is not None:
+        print(f'delivery failed: {err}')
+    else:
+        print(f'Msg delivered to {msg.topic()} [{msg.partition()}]')
+
+def produce_data_to_kafka(producer, topic, data):
+    producer.produce(
+        topic,
+        key=str(data['id']),
+        value=json.dumps(data, default=json_serializer).encode('utf-8'),
+        on_delivery=delivery_report
+    )
+    producer.flush()
+
+def simulate_journey(producer, device_id):
+    while True:
+        vehicle_data = generate_vehicle_data(device_id)
+        gps_data = generate_gps_data(device_id, vehicle_data['timestamp'])
+        traffic_camera_data = generate_traffic_camera_data(device_id, vehicle_data['timestamp'],
+                                                           vehicle_data['location'], 'Traffic-Cam-123')
+        weather_data = generate_weather_data(device_id, vehicle_data['timestamp'], vehicle_data['location'])
+        emergency_incident_data = generate_emergency_incident_data(device_id, vehicle_data['timestamp'],
+                                                                   vehicle_data['location'])
+
+        if (vehicle_data['location'][0] <= NEWYORK_COORDINATES['latitude'] and vehicle_data['location'][1] <=
+                NEWYORK_COORDINATES['longitude']):
+            print('Vehicle has reached new york. Simulation ended')
+            break
+
+        produce_data_to_kafka(producer, VEHICLE_TOPIC, vehicle_data)
+        produce_data_to_kafka(producer, GPS_TOPIC, gps_data)
+        produce_data_to_kafka(producer, TRAFFIC_TOPIC, traffic_camera_data)
+        produce_data_to_kafka(producer, WEATHER_TOPIC, weather_data)
+        produce_data_to_kafka(producer, EMERGENCY_TOPIC, emergency_incident_data)
+
+        time.sleep(5)
+
+if __name__ == "__main__":
+    producer_config = {
+        'bootstrap.servers': KAFKA_BOOTSTRAP_SERVERS,
+        'error_cb': lambda err: print(f'Kafka error: {err}')
+    }
+    producer = Producer(producer_config)
+    try:
+        simulate_journey(producer, 'Vehicle-Code-369')
+    except KeyboardInterrupt:
+        print('Simulation ended by user')
+    except Exception as e:
+        print(f'Unexpected Error occurred: {e}')
