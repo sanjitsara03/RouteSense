@@ -20,23 +20,15 @@ def main():
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
         .config("spark.hadoop.fs.s3a.access.key", configuration.get('AWS_ACCESS_KEY')) \
         .config("spark.hadoop.fs.s3a.secret.key", configuration.get('AWS_SECRET_KEY')) \
-        .config('spark.hadoop.fs.s3a.aws.credentials.provider',
-                'org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider') \
+        .config("spark.hadoop.fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider") \
         .config("spark.hadoop.security.authentication", "simple") \
         .config("spark.hadoop.security.authorization", "false") \
         .config("spark.hadoop.security.credential.provider.path", "") \
-        .config("spark.hadoop.hadoop.security.authentication", "simple") \
-        .config("spark.hadoop.hadoop.security.authorization", "false") \
-        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "true") \
-        .config("spark.hadoop.fs.s3a.path.style.access", "false") \
-        .config("spark.hadoop.fs.s3a.attempts.maximum", "3") \
-        .config("spark.hadoop.fs.s3a.connection.establish.timeout", "5000") \
-        .config("spark.hadoop.fs.s3a.connection.timeout", "200000") \
-        .config("spark.hadoop.fs.s3a.endpoint", "s3.amazonaws.com") \
-        .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
+        .config("spark.security.credentials.hadoop.enabled", "false") \
         .config("spark.driver.extraJavaOptions", "-Djava.security.krb5.conf=") \
         .config("spark.executor.extraJavaOptions", "-Djava.security.krb5.conf=") \
-        .config("spark.hadoop.hadoop.security.authentication.use_jaas", "false") \
+        .config("spark.sql.adaptive.enabled", "false") \
+        .config("spark.sql.adaptive.coalescePartitions.enabled", "false") \
         .getOrCreate()
 
     spark.sparkContext.setLogLevel('WARN')
@@ -53,7 +45,6 @@ def main():
         StructField("year", IntegerType(), True),
         StructField("fuelType", StringType(), True),
     ])
-
 
     gps = StructType([
         StructField("id", StringType(), True),
@@ -99,22 +90,21 @@ def main():
 
     def read_kafka_topic(topic, schema):
         return (spark.readStream
-                .format('kafka')
-                .option('kafka.bootstrap.servers', 'kafka:9092')
-                .option('subscribe', topic)
-                .option('startingOffsets', 'earliest')
+                .format("kafka")
+                .option("kafka.bootstrap.servers", "kafka:9092")
+                .option("subscribe", topic)
+                .option("startingOffsets", "latest")
                 .load()
-                .selectExpr('CAST(value AS STRING)')
-                .select(from_json(col('value'), schema).alias('data'))
-                .select('data.*')
-                .withWatermark('timestamp', '2 minutes')
-                )
+                .select(from_json(col("value").cast("string"), schema).alias("data"))
+                .select("data.*"))
+
     def streamWriter(input: DataFrame, checkpointFolder, output):
         return (input.writeStream
-                .format('parquet')
-                .option('checkpointLocation', checkpointFolder)
-                .option('path', output)
-                .outputMode('append')
+                .format("parquet")
+                .option("checkpointLocation", checkpointFolder)
+                .option("path", output)
+                .outputMode("append")
+                .trigger(processingTime="5 seconds")
                 .start())
 
     vehicleDF = read_kafka_topic('vehicle_data', vehicle).alias('vehicle')
