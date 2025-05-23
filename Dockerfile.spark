@@ -1,0 +1,29 @@
+FROM bitnami/spark:latest
+
+USER root
+
+RUN echo "spark:x:1001:1001:Spark User:/opt/bitnami/spark:/bin/bash" >> /etc/passwd && \
+    echo "spark:x:1001:" >> /etc/group
+
+# environment variables to disable Kerberos
+ENV HADOOP_USER_NAME=spark
+ENV HADOOP_CONF_DIR=""
+ENV JAVA_SECURITY_KRB5_CONF=""
+ENV HADOOP_SECURITY_AUTHENTICATION=simple
+ENV HADOOP_SECURITY_AUTHORIZATION=false
+
+#Hadoop configuration to disable security
+RUN mkdir -p /opt/bitnami/spark/conf && \
+    echo '<?xml version="1.0"?>' > /opt/bitnami/spark/conf/core-site.xml && \
+    echo '<configuration>' >> /opt/bitnami/spark/conf/core-site.xml && \
+    echo '  <property>' >> /opt/bitnami/spark/conf/core-site.xml && \
+    echo '    <name>hadoop.security.authentication</name>' >> /opt/bitnami/spark/conf/core-site.xml && \
+    echo '    <value>simple</value>' >> /opt/bitnami/spark/conf/core-site.xml && \
+    echo '  </property>' >> /opt/bitnami/spark/conf/core-site.xml && \
+    echo '  <property>' >> /opt/bitnami/spark/conf/core-site.xml && \
+    echo '    <name>hadoop.security.authorization</name>' >> /opt/bitnami/spark/conf/core-site.xml && \
+    echo '    <value>false</value>' >> /opt/bitnami/spark/conf/core-site.xml && \
+    echo '  </property>' >> /opt/bitnami/spark/conf/core-site.xml && \
+    echo '</configuration>' >> /opt/bitnami/spark/conf/core-site.xml
+
+USER 1001

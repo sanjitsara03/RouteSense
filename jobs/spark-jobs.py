@@ -2,20 +2,41 @@ from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.types import StructType, StructField, StringType, TimestampType, IntegerType, DoubleType
 from pyspark.sql.functions import from_json, col
 from config import configuration
+import os
 
 
 def main():
+    # Set environment variables for Hadoop authentication
+    os.environ['HADOOP_USER_NAME'] = 'spark'
+    os.environ['HADOOP_CONF_DIR'] = ''
+    os.environ['JAVA_SECURITY_KRB5_CONF'] = ''
+    
     spark = SparkSession.builder.appName("RouteSenseStreaming") \
         .config("spark.jars.packages",
-                "org.apache.spark:spark-sql-kafka-0-10_2.13:3.5.0,"
-                "org.apache.hadoop:hadoop-aws:3.3.1,"
-                "com.amazonaws:aws-java-sdk:1.11.469") \
-        .config("spark.hadoop.hadoop.security.authentication", "NOSASL")\
+                "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.5,"
+                "org.apache.hadoop:hadoop-aws:3.3.4,"
+                "com.amazonaws:aws-java-sdk-s3:1.11.1034,"
+                "com.amazonaws:aws-java-sdk-core:1.11.1034") \
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
         .config("spark.hadoop.fs.s3a.access.key", configuration.get('AWS_ACCESS_KEY')) \
         .config("spark.hadoop.fs.s3a.secret.key", configuration.get('AWS_SECRET_KEY')) \
         .config('spark.hadoop.fs.s3a.aws.credentials.provider',
                 'org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider') \
+        .config("spark.hadoop.security.authentication", "simple") \
+        .config("spark.hadoop.security.authorization", "false") \
+        .config("spark.hadoop.security.credential.provider.path", "") \
+        .config("spark.hadoop.hadoop.security.authentication", "simple") \
+        .config("spark.hadoop.hadoop.security.authorization", "false") \
+        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "true") \
+        .config("spark.hadoop.fs.s3a.path.style.access", "false") \
+        .config("spark.hadoop.fs.s3a.attempts.maximum", "3") \
+        .config("spark.hadoop.fs.s3a.connection.establish.timeout", "5000") \
+        .config("spark.hadoop.fs.s3a.connection.timeout", "200000") \
+        .config("spark.hadoop.fs.s3a.endpoint", "s3.amazonaws.com") \
+        .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
+        .config("spark.driver.extraJavaOptions", "-Djava.security.krb5.conf=") \
+        .config("spark.executor.extraJavaOptions", "-Djava.security.krb5.conf=") \
+        .config("spark.hadoop.hadoop.security.authentication.use_jaas", "false") \
         .getOrCreate()
 
     spark.sparkContext.setLogLevel('WARN')
