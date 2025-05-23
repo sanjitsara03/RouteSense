@@ -1,2 +1,4 @@
 .idea/
 jobs/config.py
+__pycache__/
+jobs/__pycache__/
